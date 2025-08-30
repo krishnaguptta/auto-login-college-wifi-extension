@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Wi-Fi AutoLogin</title>
+  <style>
+    body { font-family: Arial, sans-serif; width: 250px; padding: 10px; }
+    input { width: 100%; margin-bottom: 10px; padding: 5px; }
+    button { width: 100%; padding: 6px; }
+  </style>
+</head>
+<body>
+  <h3>Wi-Fi Login</h3>
+  <input type="text" id="username" placeholder="Username" />
+  <input type="password" id="password" placeholder="Password" />
+  <label>
+    <input type="checkbox" id="autoSubmit" checked />
+    Auto Sign-In
+  </label>
+  <button id="save">Save</button>
+  <p id="status"></p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
