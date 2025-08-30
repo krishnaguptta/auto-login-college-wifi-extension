@@ -5,7 +5,7 @@ document.getElementById("save").addEventListener("click", async () => {
 
   await chrome.storage.local.set({ username, password, autoSubmit });
 
-  document.getElementById("status").textContent = "✅ Saved!";
+  document.getElementById("status").textContent = "Saved!";
   setTimeout(() => {
     document.getElementById("status").textContent = "";
   }, 2000);

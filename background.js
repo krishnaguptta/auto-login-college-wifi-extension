@@ -1,26 +1,70 @@
 // background.js - Simplified for content script approach
 const pendingRedirects = new Map();
 
-// Track user navigation intentions
+// Track user navigation intentions - improved logic
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'loading' && tab.url) {
-    const url = new URL(tab.url);
+  try {
+    if (changeInfo.status === 'loading' && tab.url) {
+      const url = new URL(tab.url);
+      
+      console.log('[Background] Tab updated:', tab.url);
+      
+      // If user is trying to visit a non-captive portal site, store it
+      if (!url.hostname.includes('192.168.1.254') && 
+          !url.hostname.includes('chrome-extension') &&
+          !url.hostname.includes('localhost') &&
+          !url.protocol.includes('chrome') &&
+          !url.hostname.includes('newtab') &&
+          !url.hostname.includes('gstatic.com')) {
+        
+        console.log('[Background] User wants to visit:', tab.url);
+        pendingRedirects.set(tabId, tab.url);
+        
+        // Also store in chrome storage immediately
+        chrome.storage.local.set({ [`originalUrl_${tabId}`]: tab.url });
+      }
+      
+      // If we end up on captive portal and user wanted to go elsewhere
+      if (url.hostname.includes('192.168.1.254') || url.hostname.includes('gstatic.com')) {
+        console.log('[Background] Detected captive portal or connectivity check for tab', tabId);
+        
+        // Check if we have a pending redirect for this tab
+        if (pendingRedirects.has(tabId)) {
+          const originalUrl = pendingRedirects.get(tabId);
+          console.log('[Background] Storing original URL for redirect:', originalUrl);
+          chrome.storage.local.set({ [`originalUrl_${tabId}`]: originalUrl });
+        } else {
+          // If no pending redirect, this is a direct login page visit
+          console.log('[Background] Direct login page visit, will auto-close after login');
+          chrome.storage.local.set({ [`directLogin_${tabId}`]: true });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Background] Error in tab update listener:', error);
+  }
+});
+
+// Also listen for navigation events for better coverage
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  try {
+    if (details.frameId !== 0) return; // Only main frame
     
-    // If user is trying to visit a non-captive portal site, store it
+    const url = new URL(details.url);
+    
+    // Store original URLs from navigation events too
     if (!url.hostname.includes('192.168.1.254') && 
         !url.hostname.includes('chrome-extension') &&
         !url.hostname.includes('localhost') &&
-        !url.protocol.includes('chrome')) {
-      console.log('[Background] User wants to visit:', tab.url);
-      pendingRedirects.set(tabId, tab.url);
+        !url.protocol.includes('chrome') &&
+        !url.hostname.includes('gstatic.com')) {
+      
+      console.log('[Background] Navigation to:', details.url);
+      pendingRedirects.set(details.tabId, details.url);
+      chrome.storage.local.set({ [`originalUrl_${details.tabId}`]: details.url });
     }
-    
-    // If we end up on captive portal and user wanted to go elsewhere
-    if (url.hostname.includes('192.168.1.254') && pendingRedirects.has(tabId)) {
-      console.log('[Background] Detected captive portal redirect for tab', tabId);
-      // Store original URL for content script
-      chrome.storage.local.set({ [`originalUrl_${tabId}`]: pendingRedirects.get(tabId) });
-    }
+  } catch (error) {
+    console.error('[Background] Error in navigation listener:', error);
   }
 });
 
@@ -28,29 +72,91 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   if (request.action === 'loginSuccess' && sender.tab) {
     const tabId = sender.tab.id;
-    console.log('[Background] Login successful, checking for redirect');
+    console.log('[Background] Login successful, checking for redirect and auto-close');
     
-    // Get the original URL
-    const result = await chrome.storage.local.get([`originalUrl_${tabId}`]);
+    // Get the original URL and direct login flag
+    const result = await chrome.storage.local.get([
+      `originalUrl_${tabId}`, 
+      `directLogin_${tabId}`
+    ]);
     const originalUrl = result[`originalUrl_${tabId}`];
+    const isDirectLogin = result[`directLogin_${tabId}`];
     
-    if (originalUrl) {
-      console.log('[Background] Redirecting back to:', originalUrl);
+    if (originalUrl && !isDirectLogin) {
+      console.log('[Background] User was redirected from:', originalUrl);
+      console.log('[Background] Will redirect and close login tab');
       
-      // Wait for login to complete, then redirect
+      // Strategy: Create new tab with original URL, then close the login tab
       setTimeout(async () => {
         try {
-          await chrome.tabs.update(tabId, { url: originalUrl });
+          // Check if there are other tabs open
+          const allTabs = await chrome.tabs.query({});
+          const otherTabs = allTabs.filter(tab => tab.id !== tabId);
           
-          // Clean up
-          await chrome.storage.local.remove([`originalUrl_${tabId}`]);
+          if (otherTabs.length > 0) {
+            // There are other tabs, safe to close login tab
+            console.log('[Background] Creating new tab for:', originalUrl);
+            await chrome.tabs.create({ url: originalUrl, active: true });
+            
+            // Close the login tab after a short delay
+            setTimeout(async () => {
+              try {
+                await chrome.tabs.remove(tabId);
+                console.log('[Background] Closed login tab after creating new tab');
+              } catch (error) {
+                console.error('[Background] Error closing login tab:', error);
+              }
+            }, 500);
+          } else {
+            // This is the only tab, redirect it instead of closing
+            console.log('[Background] Only tab, redirecting to:', originalUrl);
+            await chrome.tabs.update(tabId, { url: originalUrl });
+          }
+          
+          // Clean up storage
+          await chrome.storage.local.remove([
+            `originalUrl_${tabId}`, 
+            `directLogin_${tabId}`
+          ]);
           pendingRedirects.delete(tabId);
           
-          console.log('[Background] Successfully redirected to original URL');
+          console.log('[Background] Successfully handled redirect');
         } catch (error) {
-          console.error('[Background] Error redirecting:', error);
+          console.error('[Background] Error handling redirect:', error);
         }
-      }, 2000);
+      }, 1000);
+    } else {
+      // No original URL to redirect to, or this was a direct login
+      console.log('[Background] Auto-closing login tab (direct login or no original URL)');
+      
+      setTimeout(async () => {
+        try {
+          // Check if this is a captive portal tab or connectivity check that should be closed
+          const tab = await chrome.tabs.get(tabId);
+          if (tab && tab.url && (tab.url.includes('192.168.1.254') || tab.url.includes('gstatic.com'))) {
+            // Only close if there are other tabs open
+            const allTabs = await chrome.tabs.query({});
+            if (allTabs.length > 1) {
+              await chrome.tabs.remove(tabId);
+              console.log('[Background] Auto-closed direct login tab');
+            } else {
+              // If it's the only tab, navigate to a useful page instead
+              await chrome.tabs.update(tabId, { url: 'https://www.google.com' });
+              console.log('[Background] Redirected to Google (only tab)');
+            }
+          }
+          
+          // Clean up storage
+          await chrome.storage.local.remove([
+            `originalUrl_${tabId}`, 
+            `directLogin_${tabId}`
+          ]);
+          pendingRedirects.delete(tabId);
+          
+        } catch (error) {
+          console.error('[Background] Error auto-closing tab:', error);
+        }
+      }, 1500); // Reduced from 3000ms to 1500ms
     }
   }
 });
@@ -58,9 +164,12 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 // Clean up when tabs are closed
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   pendingRedirects.delete(tabId);
-  await chrome.storage.local.remove([`originalUrl_${tabId}`]);
+  await chrome.storage.local.remove([
+    `originalUrl_${tabId}`, 
+    `directLogin_${tabId}`
+  ]);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[Background] Extension installed with auto-redirect');
+  console.log('[Background] Extension installed with auto-redirect and auto-close');
 });

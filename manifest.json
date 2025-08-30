@@ -3,14 +3,19 @@
   "name": "Auto Wi-Fi Login",
   "version": "1.0.0",
   "description": "Automatically log into 192.168.1.254 captive portal.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "tabs", "webNavigation"],
   "host_permissions": ["https://192.168.1.254/*", "http://192.168.1.254/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://192.168.1.254:8090/*", "http://192.168.1.254:8090/*"],
+      "matches": [
+        "https://192.168.1.254:8090/*", 
+        "http://192.168.1.254:8090/*",
+        "http://www.gstatic.com/generate_204*",
+        "https://www.gstatic.com/generate_204*"
+      ],
       "js": ["autologin.js"],
       "run_at": "document_end"
     }
@@ -22,6 +27,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
+    "default_popup": "popup.html",
     "default_title": "Auto Wi-Fi Login"
   }
 }

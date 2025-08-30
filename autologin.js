@@ -11,12 +11,26 @@
     await new Promise((res) => document.addEventListener('DOMContentLoaded', res, { once: true }));
   }
 
-  // Check if we're on the captive portal
-  if (!window.location.hostname.includes('192.168.1.254')) {
-    return; // Not on captive portal, exit
+  // Check if we're on the captive portal or connectivity check page
+  if (!window.location.hostname.includes('192.168.1.254') && 
+      !window.location.hostname.includes('gstatic.com')) {
+    return; // Not on captive portal or connectivity check, exit
   }
 
-  console.log('[AutoLogin] Running on captive portal page');
+  console.log('[AutoLogin] Running on captive portal or connectivity check page');
+
+  // Special handling for gstatic.com connectivity check page
+  if (window.location.hostname.includes('gstatic.com')) {
+    console.log('[AutoLogin] Detected gstatic.com connectivity check page');
+    
+    // This page is usually just a connectivity test, mark as direct login for auto-close
+    setTimeout(() => {
+      console.log('[AutoLogin] Connectivity check complete, requesting auto-close');
+      chrome.runtime.sendMessage({ action: 'loginSuccess' });
+    }, 2000); // Wait 2 seconds for any connectivity check to complete
+    
+    return; // Exit early for gstatic pages
+  }
 
   const settings = await chrome.storage.local.get({ username: '', password: '', autoSubmit: true });
   if (!settings.username || !settings.password) {
@@ -27,14 +41,14 @@
   // Check if we've already processed this page recently
   const lastProcessed = sessionStorage.getItem('autoLoginLastProcessed');
   const now = Date.now();
-  if (lastProcessed && (now - parseInt(lastProcessed)) < 5000) { // 5 second cooldown
+  if (lastProcessed && (now - parseInt(lastProcessed)) < 3000) { // Reduced from 5000ms to 3000ms
     console.log('[AutoLogin] Recently processed, skipping to prevent loop');
     return;
   }
   sessionStorage.setItem('autoLoginLastProcessed', now.toString());
 
-  // Wait for page to fully load
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Wait for page to fully load - reduced delay
+  await new Promise(resolve => setTimeout(resolve, 800)); // Reduced from 2000ms to 800ms
 
   // Fill the form fields (for visual feedback)
   const userEl = document.querySelector('#username') || document.querySelector('[name="username"]');
@@ -136,10 +150,10 @@
           sessionStorage.setItem('autoLoginSuccess', 'true');
           chrome.runtime.sendMessage({ action: 'loginSuccess' });
           
-          // Reload or redirect after successful login
+          // Reload or redirect after successful login - faster
           setTimeout(() => {
             window.location.reload();
-          }, 1000);
+          }, 500); // Reduced from 1000ms to 500ms
           return; // Exit after successful login
         }
       }
@@ -181,7 +195,7 @@
       
       console.log('[AutoLogin] Enter key dispatched');
       
-      // Check for success
+      // Check for success - faster detection
       setTimeout(() => {
         if (window.location.href !== window.location.href || 
             document.body.innerText.toLowerCase().includes('success') ||
@@ -189,7 +203,7 @@
           sessionStorage.setItem('autoLoginSuccess', 'true');
           chrome.runtime.sendMessage({ action: 'loginSuccess' });
         }
-      }, 3000);
+      }, 1500); // Reduced from 3000ms to 1500ms
     } else {
       console.log('[AutoLogin] No submit element found for keyboard fallback');
     }

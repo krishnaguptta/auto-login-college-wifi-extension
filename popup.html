@@ -3,21 +3,81 @@
 <head>
   <title>Wi-Fi AutoLogin</title>
   <style>
-    body { font-family: Arial, sans-serif; width: 250px; padding: 10px; }
-    input { width: 100%; margin-bottom: 10px; padding: 5px; }
-    button { width: 100%; padding: 6px; }
+    body { 
+      font-family: Arial, sans-serif; 
+      width: 280px; 
+      padding: 15px; 
+      margin: 0;
+      background: #f5f5f5;
+    }
+    h3 { 
+      margin: 0 0 15px 0; 
+      color: #333; 
+      text-align: center;
+    }
+    input[type="text"], input[type="password"] { 
+      width: 100%; 
+      margin-bottom: 10px; 
+      padding: 8px; 
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    label { 
+      display: flex; 
+      align-items: center; 
+      margin-bottom: 15px;
+      color: #555;
+    }
+    input[type="checkbox"] { 
+      margin-right: 8px; 
+    }
+    button { 
+      width: 100%; 
+      padding: 10px; 
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    #status { 
+      text-align: center; 
+      margin-top: 10px;
+      font-size: 12px;
+    }
+    .feature {
+      background: white;
+      padding: 8px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #666;
+    }
   </style>
 </head>
 <body>
-  <h3>Wi-Fi Login</h3>
+  <h3>Wi-Fi AutoLogin</h3>
   <input type="text" id="username" placeholder="Username" />
   <input type="password" id="password" placeholder="Password" />
   <label>
     <input type="checkbox" id="autoSubmit" checked />
-    Auto Sign-In
+    Enable Auto Sign-In
   </label>
-  <button id="save">Save</button>
+  <button id="save">Save Settings</button>
   <p id="status"></p>
+  
+  <div class="feature">
+    <strong>Features:</strong><br>
+    1. Auto-fills login credentials<br>
+    2. Auto-submits login form<br>
+    3. Redirects to original website<br>
+    4. Auto-closes login tabs
+  </div>
 
   <script src="popup.js"></script>
 </body>
