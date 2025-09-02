@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Connectivity Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .test-result { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Wi-Fi Auto Login Extension - Connectivity Test</h1>
+    
+    <h2>Test Scenarios:</h2>
+    
+    <button onclick="testConnectivity()">Test Current Connectivity</button>
+    <button onclick="simulateOffline()">Simulate Offline (for testing)</button>
+    <button onclick="openCachedSite()">Open Cached Site (YouTube)</button>
+    
+    <div id="results"></div>
+    
+    <h2>How to Test:</h2>
+    <ol>
+        <li><strong>Disconnect from Wi-Fi</strong> or turn off internet</li>
+        <li><strong>Click "Open Cached Site"</strong> to open YouTube (should be cached)</li>
+        <li><strong>Extension should detect</strong> no internet and automatically redirect to captive portal</li>
+        <li><strong>Extension should auto-login</strong> and return you to YouTube</li>
+    </ol>
+    
+    <h2>What the Extension Does:</h2>
+    <ul>
+        <li>🔍 <strong>Monitors all web pages</strong> for connectivity issues</li>
+        <li>📡 <strong>Tests internet connection</strong> when you visit websites</li>
+        <li>🚨 <strong>Detects cached pages</strong> that load without internet</li>
+        <li>🔄 <strong>Automatically triggers</strong> captive portal when needed</li>
+        <li>🔐 <strong>Auto-logins</strong> and returns you to your original page</li>
+    </ul>
+
+    <script>
+        async function testConnectivity() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="test-result warning">Testing connectivity...</div>';
+            
+            try {
+                const response = await fetch('http://www.gstatic.com/generate_204?' + Date.now(), {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    mode: 'no-cors'
+                });
+                
+                results.innerHTML = '<div class="test-result success">✅ Internet connection is working!</div>';
+            } catch (error) {
+                results.innerHTML = '<div class="test-result error">❌ No internet connection detected. Extension should trigger captive portal.</div>';
+            }
+        }
+        
+        function simulateOffline() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="test-result warning">⚠️ To test offline mode, please disconnect your internet and reload this page.</div>';
+        }
+        
+        function openCachedSite() {
+            // Open YouTube which is commonly cached
+            window.open('https://www.youtube.com', '_blank');
+        }
+        
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testConnectivity, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -1,5 +1,64 @@
 // background.js - Simplified for content script approach
 const pendingRedirects = new Map();
+const failedRequests = new Map(); // Track failed requests per tab
+
+// Monitor web requests to detect connectivity issues
+chrome.webRequest.onErrorOccurred.addListener((details) => {
+  // Only monitor main frame requests
+  if (details.type !== 'main_frame') return;
+  
+  // Ignore local and extension URLs
+  if (details.url.includes('chrome-extension') || 
+      details.url.includes('localhost') ||
+      details.url.includes('192.168.1.254')) {
+    return;
+  }
+  
+  console.log('[Background] Network error detected for:', details.url, 'Error:', details.error);
+  
+  // Common network errors that indicate no internet connectivity
+  const connectivityErrors = [
+    'net::ERR_INTERNET_DISCONNECTED',
+    'net::ERR_NETWORK_CHANGED',
+    'net::ERR_DNS_RESOLUTION_FAILED',
+    'net::ERR_CONNECTION_FAILED',
+    'net::ERR_CONNECTION_TIMED_OUT'
+  ];
+  
+  if (connectivityErrors.includes(details.error)) {
+    console.log('[Background] Connectivity issue detected, will trigger captive portal check');
+    
+    // Store the failed URL as original destination
+    failedRequests.set(details.tabId, details.url);
+    
+    // Trigger captive portal detection after a brief delay
+    setTimeout(() => {
+      triggerCaptivePortalForTab(details.tabId, details.url);
+    }, 1000);
+  }
+}, { urls: ["<all_urls>"] });
+
+// Function to trigger captive portal detection for a specific tab
+async function triggerCaptivePortalForTab(tabId, originalUrl) {
+  try {
+    console.log('[Background] Triggering captive portal for tab:', tabId, 'Original URL:', originalUrl);
+    
+    // Store the original URL
+    pendingRedirects.set(tabId, originalUrl);
+    chrome.storage.local.set({ 
+      [`originalUrl_${tabId}`]: originalUrl,
+      [`originalTime_${tabId}`]: Date.now()
+    });
+    
+    // Navigate to connectivity check URL to trigger captive portal
+    await chrome.tabs.update(tabId, { 
+      url: 'http://www.gstatic.com/generate_204' 
+    });
+    
+  } catch (error) {
+    console.error('[Background] Error triggering captive portal:', error);
+  }
+}
 
 // Track user navigation intentions - improved logic
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -70,6 +129,21 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
 // Listen for login success from content script
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  if (request.action === 'storeOriginalUrl' && sender.tab) {
+    // Store original URL when connectivity check detects no internet
+    const tabId = sender.tab.id;
+    console.log('[Background] Storing original URL from connectivity check:', request.url);
+    
+    pendingRedirects.set(tabId, request.url);
+    chrome.storage.local.set({ 
+      [`originalUrl_${tabId}`]: request.url,
+      [`originalTime_${tabId}`]: Date.now()
+    });
+    
+    sendResponse({ success: true });
+    return;
+  }
+  
   if (request.action === 'loginSuccess' && sender.tab) {
     const tabId = sender.tab.id;
     console.log('[Background] Login successful, checking for redirect and auto-close');
@@ -164,9 +238,11 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 // Clean up when tabs are closed
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   pendingRedirects.delete(tabId);
+  failedRequests.delete(tabId);
   await chrome.storage.local.remove([
     `originalUrl_${tabId}`, 
-    `directLogin_${tabId}`
+    `directLogin_${tabId}`,
+    `originalTime_${tabId}`
   ]);
 });
 
