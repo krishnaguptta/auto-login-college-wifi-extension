@@ -7,6 +7,12 @@
   }
   window.autoLoginExecuted = true;
 
+  // NEW: Check if a login attempt has already failed in this session
+  if (sessionStorage.getItem('autoLoginFailed')) {
+    console.log('[AutoLogin] A previous login attempt failed. Halting to prevent loop.');
+    return;
+  }
+
   if (document.readyState === 'loading') {
     await new Promise((res) => document.addEventListener('DOMContentLoaded', res, { once: true }));
   }
@@ -30,6 +36,30 @@
     }, 2000); // Wait 2 seconds for any connectivity check to complete
     
     return; // Exit early for gstatic pages
+  }
+
+  // Helper: show visible failure banner on page
+  function showLoginFailureMessage() {
+    const existingBanner = document.getElementById('autologin-error-banner');
+    if (existingBanner) existingBanner.remove();
+    const banner = document.createElement('div');
+    banner.id = 'autologin-error-banner';
+    banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        background-color: #D32F2F;
+        color: white;
+        padding: 12px;
+        text-align: center;
+        font-family: sans-serif;
+        font-size: 16px;
+        z-index: 99999;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    `;
+    banner.textContent = 'Auto-Login Failed: Your username or password might be incorrect. Please check them and log in manually.';
+    document.body.prepend(banner);
   }
 
   const settings = await chrome.storage.local.get({ username: '', password: '', autoSubmit: true });
@@ -95,12 +125,24 @@
         });
 
         console.log('[AutoLogin] Response status:', response.status);
-        
+        const responseText = await response.text();
+        const errorKeywords = ['failed', 'incorrect', 'invalid', 'error', 'wrong password'];
+        const isLoginError = errorKeywords.some(keyword => responseText.toLowerCase().includes(keyword));
+
+        if (isLoginError) {
+          console.error('[AutoLogin] Login failed. Error message found in response.');
+          sessionStorage.setItem('autoLoginFailed', 'true');
+          showLoginFailureMessage();
+          chrome.runtime.sendMessage({ action: 'loginFailed' });
+          return;
+        }
+
         if (response.ok || response.redirected) {
           console.log('[AutoLogin] Login successful via HTTP request');
           
           // Mark as successful to prevent further attempts
           sessionStorage.setItem('autoLoginSuccess', 'true');
+          sessionStorage.removeItem('autoLoginFailed');
           chrome.runtime.sendMessage({ action: 'loginSuccess' });
           
           // If we got redirected, follow it
@@ -109,7 +151,6 @@
             window.location.href = response.url;
           } else {
             // Check response content for success
-            const responseText = await response.text();
             if (responseText.toLowerCase().includes('success') || 
                 responseText.toLowerCase().includes('logged')) {
               console.log('[AutoLogin] Success detected, reloading page');
@@ -148,6 +189,7 @@
           
           // Mark as successful
           sessionStorage.setItem('autoLoginSuccess', 'true');
+          sessionStorage.removeItem('autoLoginFailed');
           chrome.runtime.sendMessage({ action: 'loginSuccess' });
           
           // Reload or redirect after successful login - faster
@@ -155,6 +197,17 @@
             window.location.reload();
           }, 500); // Reduced from 1000ms to 500ms
           return; // Exit after successful login
+        }
+
+        // Check for failure keywords in direct POST response
+        const errorKeywords = ['failed', 'incorrect', 'invalid', 'error', 'wrong password'];
+        const isLoginError = errorKeywords.some(keyword => responseText.toLowerCase().includes(keyword));
+        if (isLoginError) {
+          console.error('[AutoLogin] Login failed (direct POST). Error message found in response.');
+          sessionStorage.setItem('autoLoginFailed', 'true');
+          showLoginFailureMessage();
+          chrome.runtime.sendMessage({ action: 'loginFailed' });
+          return;
         }
       }
       
@@ -197,8 +250,7 @@
       
       // Check for success - faster detection
       setTimeout(() => {
-        if (window.location.href !== window.location.href || 
-            document.body.innerText.toLowerCase().includes('success') ||
+        if (document.body.innerText.toLowerCase().includes('success') ||
             !document.querySelector('#username')) {
           sessionStorage.setItem('autoLoginSuccess', 'true');
           chrome.runtime.sendMessage({ action: 'loginSuccess' });
