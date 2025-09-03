@@ -3,7 +3,7 @@
   "name": "Auto Wi-Fi Login",
   "version": "1.0.0",
   "description": "Automatically log into 192.168.1.254 captive portal.",
-  "permissions": ["storage", "activeTab", "tabs", "webNavigation", "webRequest"],
+  "permissions": ["storage", "activeTab", "tabs", "webNavigation", "webRequest", "notifications"],
   "host_permissions": ["https://192.168.1.254/*", "http://192.168.1.254/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js"

@@ -75,6 +75,13 @@ chrome.webRequest.onErrorOccurred.addListener((details) => {
   }
 }, { urls: ["<all_urls>"] });
 
+// Single registration for notification click handling
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId === 'login-failed-notification') {
+    chrome.runtime.openOptionsPage();
+  }
+});
+
 // Function to trigger captive portal detection for a specific tab
 async function triggerCaptivePortalForTab(tabId, originalUrl) {
   try {
@@ -169,6 +176,24 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
 // Listen for login success from content script
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  // NEW: Handle login failure notifications
+  if (request.action === 'loginFailed') {
+    console.log('[Background] Login failure reported from content script.');
+    try {
+      chrome.notifications.create('login-failed-notification', {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'Auto Wi-Fi Login Failed',
+        message: 'Your saved credentials seem to be incorrect. Please update them in the extension options.',
+        priority: 2
+      });
+      sendResponse({ success: true });
+    } catch (e) {
+      console.error('[Background] Error creating notification:', e);
+      sendResponse({ success: false, error: e && e.message });
+    }
+    return true;
+  }
   if (request.action === 'triggerCaptivePortal' && sender.tab) {
     // Handle direct captive portal trigger from content script
     const tabId = sender.tab.id;
