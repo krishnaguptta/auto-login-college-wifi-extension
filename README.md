@@ -10,7 +10,7 @@ This Chrome extension automates the login process for your college Wi-Fi network
 ## Installation
 1. Download or clone this repository:
 	```sh
-	git clone https://github.com/armanmaurya/auto-login-college-wifi-extension.git
+	git clone https://github.com/krishnaguptta/auto-login-college-wifi-extension.git
 	```
 2. Open Chrome and go to `chrome://extensions/`.
 3. Enable "Developer mode" (top right).
@@ -20,6 +20,7 @@ This Chrome extension automates the login process for your college Wi-Fi network
 ## Usage
 Once installed, save your admission number and password in the extension options.
 ![Demo](/assets/Demo.png)
+
 Now enjoy seamless Wi-Fi connectivity without the hassle of manual logins.
 
 ## Contributing
