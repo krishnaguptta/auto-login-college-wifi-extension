@@ -20,15 +20,29 @@
     <button onclick="testConnectivity()">Test Current Connectivity</button>
     <button onclick="simulateOffline()">Simulate Offline (for testing)</button>
     <button onclick="openCachedSite()">Open Cached Site (YouTube)</button>
+    <button onclick="openStreamingSites()">Open Streaming Sites</button>
+    <button onclick="testVideoBuffering()">Test Video Buffering Detection</button>
     
     <div id="results"></div>
     
-    <h2>How to Test:</h2>
+    <h2>Video Streaming Test:</h2>
+    <video id="testVideo" controls style="width: 300px; margin: 10px 0;">
+      <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+    <br>
+    <button onclick="playTestVideo()">Play Test Video</button>
+    <button onclick="simulateBuffering()">Simulate Video Buffering</button>
+    
+    <h2>How to Test Streaming Issues:</h2>
     <ol>
-        <li><strong>Disconnect from Wi-Fi</strong> or turn off internet</li>
-        <li><strong>Click "Open Cached Site"</strong> to open YouTube (should be cached)</li>
-        <li><strong>Extension should detect</strong> no internet and automatically redirect to captive portal</li>
-        <li><strong>Extension should auto-login</strong> and return you to YouTube</li>
+        <li><strong>Connect to Wi-Fi</strong> and open Netflix/YouTube</li>
+        <li><strong>Start playing a video</strong></li>
+        <li><strong>Disconnect internet</strong> (while staying on Wi-Fi)</li>
+        <li><strong>Video should start buffering</strong></li>
+        <li><strong>Extension should detect buffering</strong> after 8 seconds</li>
+        <li><strong>Extension should automatically</strong> redirect to captive portal</li>
+        <li><strong>Extension should auto-login</strong> and return to video</li>
     </ol>
     
     <h2>What the Extension Does:</h2>
@@ -36,8 +50,11 @@
         <li>🔍 <strong>Monitors all web pages</strong> for connectivity issues</li>
         <li>📡 <strong>Tests internet connection</strong> when you visit websites</li>
         <li>🚨 <strong>Detects cached pages</strong> that load without internet</li>
+        <li>🎥 <strong>Monitors video streaming</strong> and buffering events</li>
+        <li>📱 <strong>Tracks network requests</strong> from video players and AJAX calls</li>
         <li>🔄 <strong>Automatically triggers</strong> captive portal when needed</li>
         <li>🔐 <strong>Auto-logins</strong> and returns you to your original page</li>
+        <li>🔔 <strong>Shows notifications</strong> during reconnection process</li>
     </ul>
 
     <script>
@@ -68,9 +85,57 @@
             window.open('https://www.youtube.com', '_blank');
         }
         
+        function openStreamingSites() {
+            const streamingSites = [
+                'https://www.netflix.com',
+                'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                'https://www.twitch.tv',
+                'https://vimeo.com'
+            ];
+            
+            streamingSites.forEach(site => {
+                window.open(site, '_blank');
+            });
+        }
+        
+        function playTestVideo() {
+            const video = document.getElementById('testVideo');
+            video.play().catch(error => {
+                console.log('Video play failed:', error);
+            });
+        }
+        
+        function simulateBuffering() {
+            const video = document.getElementById('testVideo');
+            const results = document.getElementById('results');
+            
+            // Simulate a buffering event
+            video.dispatchEvent(new Event('waiting'));
+            results.innerHTML = '<div class="test-result warning">🎥 Simulated video buffering event. Extension should detect this if connectivity is poor.</div>';
+            
+            setTimeout(() => {
+                video.dispatchEvent(new Event('canplay'));
+                results.innerHTML += '<div class="test-result success">✅ Video buffering resolved.</div>';
+            }, 10000);
+        }
+        
+        function testVideoBuffering() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="test-result warning">🎥 Testing video buffering detection. The extension will monitor video elements for buffering events.</div>';
+            
+            // Test if extension detects video elements
+            const videos = document.querySelectorAll('video');
+            if (videos.length > 0) {
+                results.innerHTML += '<div class="test-result success">✅ Found ' + videos.length + ' video element(s). Extension should monitor these.</div>';
+            } else {
+                results.innerHTML += '<div class="test-result error">❌ No video elements found on this page.</div>';
+            }
+        }
+        
         // Auto-test on page load
         window.addEventListener('load', () => {
             setTimeout(testConnectivity, 1000);
+            setTimeout(testVideoBuffering, 2000);
         });
     </script>
 </body>

@@ -4,8 +4,8 @@ const failedRequests = new Map(); // Track failed requests per tab
 
 // Monitor web requests to detect connectivity issues
 chrome.webRequest.onErrorOccurred.addListener((details) => {
-  // Only monitor main frame requests
-  if (details.type !== 'main_frame') return;
+  // Monitor main frame and media requests (for video streaming)
+  if (details.type !== 'main_frame' && details.type !== 'media' && details.type !== 'xmlhttprequest') return;
   
   // Ignore local and extension URLs
   if (details.url.includes('chrome-extension') || 
@@ -14,7 +14,12 @@ chrome.webRequest.onErrorOccurred.addListener((details) => {
     return;
   }
   
-  console.log('[Background] Network error detected for:', details.url, 'Error:', details.error);
+  console.log('[Background] Network error detected:', {
+    url: details.url,
+    type: details.type,
+    error: details.error,
+    tabId: details.tabId
+  });
   
   // Common network errors that indicate no internet connectivity
   const connectivityErrors = [
@@ -22,19 +27,51 @@ chrome.webRequest.onErrorOccurred.addListener((details) => {
     'net::ERR_NETWORK_CHANGED',
     'net::ERR_DNS_RESOLUTION_FAILED',
     'net::ERR_CONNECTION_FAILED',
-    'net::ERR_CONNECTION_TIMED_OUT'
+    'net::ERR_CONNECTION_TIMED_OUT',
+    'net::ERR_CONNECTION_REFUSED',
+    'net::ERR_NETWORK_ACCESS_DENIED'
   ];
   
   if (connectivityErrors.includes(details.error)) {
-    console.log('[Background] Connectivity issue detected, will trigger captive portal check');
+    console.log('[Background] Connectivity issue detected for tab:', details.tabId);
     
-    // Store the failed URL as original destination
-    failedRequests.set(details.tabId, details.url);
-    
-    // Trigger captive portal detection after a brief delay
-    setTimeout(() => {
-      triggerCaptivePortalForTab(details.tabId, details.url);
-    }, 1000);
+    // Store the failed URL as original destination for main frame requests
+    if (details.type === 'main_frame') {
+      failedRequests.set(details.tabId, details.url);
+      
+      // Trigger captive portal detection immediately for main frame failures
+      setTimeout(() => {
+        triggerCaptivePortalForTab(details.tabId, details.url);
+      }, 500);
+    } else {
+      // For media/xhr requests, check if we have multiple failures from the same tab
+      let tabFailures = failedRequests.get(details.tabId);
+      if (!Array.isArray(tabFailures)) {
+        tabFailures = [];
+      }
+      
+      tabFailures.push({
+        url: details.url,
+        type: details.type,
+        time: Date.now()
+      });
+      failedRequests.set(details.tabId, tabFailures);
+      
+      // If we have multiple media/xhr failures in a short time, trigger portal check
+      const recentFailures = tabFailures.filter(f => Date.now() - f.time < 30000); // 30 seconds
+      if (recentFailures.length >= 3) {
+        console.log('[Background] Multiple media/xhr failures detected, triggering portal check');
+        
+        // Get the current tab URL to use as original destination
+        chrome.tabs.get(details.tabId).then(tab => {
+          if (tab && tab.url) {
+            triggerCaptivePortalForTab(details.tabId, tab.url);
+          }
+        }).catch(error => {
+          console.error('[Background] Error getting tab info:', error);
+        });
+      }
+    }
   }
 }, { urls: ["<all_urls>"] });
 
@@ -50,10 +87,13 @@ async function triggerCaptivePortalForTab(tabId, originalUrl) {
       [`originalTime_${tabId}`]: Date.now()
     });
     
-    // Navigate to connectivity check URL to trigger captive portal
+    // Navigate to HTTP connectivity check URL to trigger captive portal
+    // Using HTTP ensures the college captive portal will intercept the request
     await chrome.tabs.update(tabId, { 
-      url: 'http://www.gstatic.com/generate_204' 
+      url: 'http://www.gstatic.com/generate_204?' + Date.now()
     });
+    
+    console.log('[Background] Successfully navigated to trigger captive portal');
     
   } catch (error) {
     console.error('[Background] Error triggering captive portal:', error);
@@ -129,6 +169,35 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 
 // Listen for login success from content script
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  if (request.action === 'triggerCaptivePortal' && sender.tab) {
+    // Handle direct captive portal trigger from content script
+    const tabId = sender.tab.id;
+    console.log('[Background] Direct captive portal trigger from tab:', tabId);
+    
+    // Store the current URL as original destination
+    if (request.currentUrl) {
+      console.log('[Background] Storing original URL:', request.currentUrl);
+      pendingRedirects.set(tabId, request.currentUrl);
+      chrome.storage.local.set({ 
+        [`originalUrl_${tabId}`]: request.currentUrl,
+        [`originalTime_${tabId}`]: Date.now()
+      });
+    }
+    
+    // Navigate to connectivity check URL to trigger captive portal
+    chrome.tabs.update(tabId, {
+      url: 'http://www.gstatic.com/generate_204?' + Date.now()
+    }).then(() => {
+      console.log('[Background] Successfully triggered captive portal navigation');
+      sendResponse({ success: true });
+    }).catch(error => {
+      console.error('[Background] Error triggering captive portal:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    
+    return true; // Will respond asynchronously
+  }
+  
   if (request.action === 'storeOriginalUrl' && sender.tab) {
     // Store original URL when connectivity check detects no internet
     const tabId = sender.tab.id;
@@ -138,6 +207,52 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     chrome.storage.local.set({ 
       [`originalUrl_${tabId}`]: request.url,
       [`originalTime_${tabId}`]: Date.now()
+    });
+    
+    sendResponse({ success: true });
+    return;
+  }
+  
+  if (request.action === 'streamingBuffering' && sender.tab) {
+    // Handle streaming buffering detection from content script
+    const tabId = sender.tab.id;
+    console.log('[Background] Streaming buffering detected on tab:', tabId);
+    
+    // Handle instant buffering for immediate response
+    if (request.instant) {
+      console.log('[Background] INSTANT streaming buffering - processing immediately');
+      
+      // Store current URL as original destination
+      chrome.tabs.get(tabId).then(tab => {
+        if (tab && tab.url) {
+          console.log('[Background] Storing original URL and triggering immediate portal redirect');
+          pendingRedirects.set(tabId, tab.url);
+          chrome.storage.local.set({ 
+            [`originalUrl_${tabId}`]: tab.url,
+            [`originalTime_${tabId}`]: Date.now()
+          });
+          
+          // Force immediate navigation to captive portal using HTTP
+          chrome.tabs.update(tabId, {
+            url: 'http://www.gstatic.com/generate_204?' + Date.now()
+          });
+        }
+      }).catch(error => {
+        console.error('[Background] Error handling instant streaming buffering:', error);
+      });
+      
+      sendResponse({ success: true, action: 'instant_redirect' });
+      return true;
+    }
+    
+    // Store current URL as original destination for non-instant handling
+    chrome.tabs.get(tabId).then(tab => {
+      if (tab && tab.url) {
+        console.log('[Background] Triggering captive portal due to streaming buffering');
+        triggerCaptivePortalForTab(tabId, tab.url);
+      }
+    }).catch(error => {
+      console.error('[Background] Error handling streaming buffering:', error);
     });
     
     sendResponse({ success: true });
