@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Extension Test Page</title>
+</head>
+<body>
+    <h1>Extension Test</h1>
+    <p>This is a test page to verify the auto-login extension is functioning.</p>
+    <p>Open Chrome Developer Tools and check for any extension-related errors.</p>
+    
+    <script>
+        console.log('Test page loaded - Extension should inject connectivity-check.js');
+        // This will help verify if the extension is working
+        setTimeout(() => {
+            if (window.wifiMonitor) {
+                console.log('✅ Extension connectivity monitor is active');
+            } else {
+                console.log('❌ Extension not detected or not working');
+            }
+        }, 2000);
+    </script>
+</body>
+</html>
