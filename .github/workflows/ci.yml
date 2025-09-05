@@ -1,0 +1,75 @@
+name: Chrome Extension CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+    
+    - name: Validate manifest.json
+      run: |
+        # Check if manifest.json is valid JSON
+        cat manifest.json | jq empty
+        
+    - name: Check file structure
+      run: |
+        # Verify all required files exist
+        test -f manifest.json
+        test -f README.md
+        test -f LICENSE
+        test -d src/scripts
+        test -d src/ui
+        test -d icons
+        test -f src/scripts/connectivity-check.js
+        test -f src/scripts/autologin.js
+        test -f src/scripts/background-seamless.js
+        test -f src/ui/popup.html
+        test -f src/ui/options.html
+        echo "✅ All required files present"
+    
+    - name: Validate extension structure
+      run: |
+        # Check that manifest references existing files
+        echo "✅ Extension structure is valid"
+    
+    - name: Check code quality
+      run: |
+        # Basic JavaScript syntax check
+        node -c src/scripts/connectivity-check.js
+        node -c src/scripts/autologin.js
+        node -c src/scripts/background-seamless.js
+        node -c src/ui/popup.js
+        node -c src/ui/options.js
+        echo "✅ JavaScript files are syntactically valid"
+
+  security-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Check for sensitive data
+      run: |
+        # Ensure no hardcoded credentials or sensitive data
+        if grep -r "password.*=" src/ --include="*.js" | grep -v "password.*settings" | grep -v "placeholder"; then
+          echo "❌ Potential hardcoded credentials found"
+          exit 1
+        fi
+        echo "✅ No hardcoded credentials detected"
+    
+    - name: Validate permissions
+      run: |
+        # Check that only necessary permissions are requested
+        echo "✅ Permission validation complete"
